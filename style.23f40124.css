@@ -66,34 +66,7 @@ header.bar .crumbs .cur{color:var(--txt);font-size:17px;font-weight:600;white-sp
 .folder .fm{display:flex;justify-content:space-between;align-items:baseline;padding:11px 14px;}
 .folder .ft{font-size:16px;font-weight:600;}
 .folder .fc{color:var(--mut);font-size:12px;}
-/* 首页头条：网页版个人战力榜。图片版是发出去用的成品，网页版才是一进首页
-   零点击就该看到的东西（谁第几）。两列是刻意的——16 行单列会把相册整块挤到
-   折叠线以下；窄屏自动并回一列。 */
-/* 块内左右各留 10px:加上 .dt 单元格自己的 10px,标题与表头首列文字都落在离块边 20px 处,压同一条线 */
-.hbd{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:0 10px 10px;margin:0 0 18px;}
-.hbh{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding:14px 10px 10px;}
-.hbh h2{font-size:17px;font-weight:700;}
-.hbh .hbn{color:var(--mut);font-size:12px;flex:1 1 auto;}
-/* margin-left:auto:窄屏这颗按钮会换行独占一行,靠自动外边距把它顶到右缘,不然孤零零杵在左边 */
-.hbh .hbz{flex:0 0 auto;margin-left:auto;font-size:13px;color:var(--mut);border:1px solid var(--line);
-     border-radius:999px;padding:5px 12px;cursor:zoom-in;white-space:nowrap;}
-.hbh .hbz:hover{border-color:var(--gold);color:var(--txt);}
-/* 列口径与图片版那张榜完全一致（排名/选手/档位/均分/战力/对局胜率/比赛胜率/MVP/KDA）。
-   机制按 docs/ui-layout-checklist §六「多列宽表」的正解：table-layout:auto + width:100% +
-   统一 padding，直接复用站里的 .dt/.tblwrap，别再自造 flex 行。
-   曾试过 flex 两列的精简版（只有名次/姓名/档位/均分/条）：一行 60% 是一根光秃秃的条，
-   撑不起 1180 的宽度，看着又空又怪——列少就别占宽版面，要占就把列补齐。 */
-.hbd .tblwrap{border:0;background:transparent;border-radius:0;}
-.hbd table.dt{min-width:0;}
-.hbd .dt thead th{background:transparent;}
-.hbd .dt td.wb,.hbd .dt th.wb{width:24%;}   /* 给战力条列一个占比宽度:富余宽度按各列内容分摊,
-     不像 width:99% 那样全灌进条里(条占掉半行,一行看着就剩一根光棍条) */
-.hbd .dt td.wb .sbar{display:block;width:100%;height:6px;}
-/* 窄屏按重要性逐级收列，宁可少给几列也不让首页头条横向滚动（#8） */
-@media(max-width:900px){ .hbd .o2{display:none;} }
-@media(max-width:620px){ .hbd .o3{display:none;}
-  .hbd .dt td,.hbd .dt th{padding:7px 5px;} }
-
+.folder.lb .cv img{cursor:zoom-in;}
 .entry{max-width:1180px;margin:20px auto 0;}
 .entry a{display:flex;align-items:center;justify-content:center;gap:8px;padding:14px;border-radius:12px;
         border:1px dashed var(--line);color:var(--mut);font-size:14px;}
