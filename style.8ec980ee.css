@@ -1,0 +1,403 @@
+
+/* 换页过渡已移除(2026-06-24):默认全页交叉淡入在两页布局不同时,淡入中点新旧内容各半透明叠加
+   →内容重影、背景/导航中点变暗=用户看到的「切换闪两下」。改用浏览器原生 paint-holding(同源换页
+   保留旧页直到新页首帧绘好)+ hover/touch 预取 + 内容首屏前同步内联渲染(无 FOUC)= 干净即时切换、不闪。
+   若要回平滑淡入:须只让「内容区」过渡、把背景/导航做成持久元素(view-transition-name,需真元素非::before),
+   且必须在真机上肉眼验证过渡(无头截图截不到中间帧)后再上——别再盲发。 */
+:root{--bg:#070d18;--panel:rgba(14,23,38,.58);--line:#1f2f44;--txt:#e7f1fb;--mut:#7fa0ba;--gold:#f1d98f;}
+*{box-sizing:border-box;}
+/* 滚动收敛到菜单栏下方的 main.scroll：滚动条从菜单底下开始，不再穿过菜单栏 */
+html{background:var(--bg);}   /* 画布根色=深底:跨文档换页/过渡的任何间隙都是深色,不露白闪 */
+body{height:100vh;height:100dvh;overflow:hidden;display:flex;flex-direction:column;}
+/* 菜单栏悬浮不占位：内容从面包屑文字底下滑过，没有任何"栏"的截断感 */
+main.scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;}
+header.bar+main.scroll{margin-top:-50px;padding-top:50px;}
+/* 滚动条：细+高透，轨道透明 */
+html,main.scroll{scrollbar-width:thin;scrollbar-color:rgba(86,116,156,.22) transparent;}
+::-webkit-scrollbar{width:7px;height:7px;}
+::-webkit-scrollbar-thumb{background:rgba(86,116,156,.20);border-radius:4px;}
+::-webkit-scrollbar-thumb:hover{background:rgba(110,144,188,.45);}
+::-webkit-scrollbar-track{background:transparent;}
+body{margin:0;background:transparent;   /* 深底交给 html(见上):body 透明,免得盖住 body::before(z-index:-1)的背景图 */color:var(--txt);
+     font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;-webkit-tap-highlight-color:transparent;}
+/* 全站氛围背景：背景图（构建时压的 web 版）+ 较轻深色罩（主体内容自带面板底，罩太重背景就看不见了）,fixed 不随滚动。
+   尺寸用 100vw/100vh（含滚动条区）：换页时滚动条出现/消失不改变背景定位基准，背景纹丝不动，滚动条浮在背景之上。 */
+body::before{content:"";position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:-1;pointer-events:none;
+  background:
+    linear-gradient(180deg, rgba(7,13,24,.08) 0%, rgba(7,13,24,.36) 44%, rgba(7,13,24,.58) 72%, rgba(7,13,24,.74) 100%),
+    url(img/bg.jpg) center -130px/cover no-repeat #070d18;}
+@media(max-width:760px){ body::before{background-position:center 0,center -60px;} }   /* 手机图小，上裁少一点 */
+body::after{content:"";position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:-1;pointer-events:none;opacity:.5;
+  background-image:linear-gradient(rgba(120,150,200,.04) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(120,150,200,.04) 1px,transparent 1px);
+  background-size:46px 46px;
+  -webkit-mask-image:radial-gradient(1200px 700px at 50% -5%,#000,transparent 75%);
+          mask-image:radial-gradient(1200px 700px at 50% -5%,#000,transparent 75%);}
+a{color:inherit;text-decoration:none;}
+/* 键盘焦点可见(无障碍):Tab 到任何可聚焦元素给金色焦点环,鼠标点击不触发(:focus-visible) */
+a:focus-visible,button:focus-visible,input:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--gold);outline-offset:2px;border-radius:4px;}
+img{display:block;}
+header.hero{padding:30px 20px 6px;text-align:center;}
+header.hero h1{margin:0;font-size:27px;letter-spacing:2px;}
+header.hero .sub{color:var(--mut);font-size:13px;margin-top:8px;}
+/* 菜单栏：永远完全透明，背景直透，只有可点击的文字 */
+header.bar{flex:0 0 auto;z-index:40;display:flex;align-items:center;gap:10px;
+     background:transparent;padding:12px 16px;pointer-events:none;}
+header.bar a,header.bar .cur{pointer-events:auto;}
+/* 面包屑：完整路径每级可点(原来只有"‹ 上一级"，回首页要点两次)。
+   宽度够时全部展示；窄屏靠 flex+ellipsis 先把祖先层压缩成省略号，当前层尽量保留。 */
+header.bar nav.crumbs{display:flex;align-items:center;gap:6px;min-width:0;flex:1;}
+header.bar .crumbs a{color:var(--mut);font-size:15px;padding:4px 2px;white-space:nowrap;
+     overflow:hidden;text-overflow:ellipsis;flex:0 1 auto;min-width:2.5em;}
+header.bar .crumbs a:hover{color:var(--txt);}
+header.bar .crumbs .sep{color:var(--mut);opacity:.45;flex:0 0 auto;}
+header.bar .crumbs .cur{color:var(--txt);font-size:17px;font-weight:600;white-space:nowrap;
+     overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto;}
+.wrap{max-width:1180px;margin:0 auto;padding:18px 16px 44px;}
+
+/* 相册封面（主页三相册 / 比赛日期子相册）。封面框 3:2 贴合海报与战力榜（均 1.5）,
+   选手卡（竖图）靠 object-position:top 显示顶部姓名头像而非中段。 */
+.albums{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));}
+.folder{display:block;background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;
+        transition:transform .15s,border-color .15s;}
+.folder:hover{transform:translateY(-3px);border-color:var(--gold);}
+.folder .cv{aspect-ratio:3/2;overflow:hidden;background:#0b1320;}
+.folder .cv img{width:100%;height:100%;object-fit:cover;object-position:top;}
+.folder .fm{display:flex;justify-content:space-between;align-items:baseline;padding:11px 14px;}
+.folder .ft{font-size:16px;font-weight:600;}
+.folder .fc{color:var(--mut);font-size:12px;}
+.entry{max-width:1180px;margin:20px auto 0;}
+.entry a{display:flex;align-items:center;justify-content:center;gap:8px;padding:14px;border-radius:12px;
+        border:1px dashed var(--line);color:var(--mut);font-size:14px;}
+.entry a:hover{border-color:var(--gold);color:var(--txt);}
+/* 主入口(数据站)实心高对比,与次入口(整页浏览)虚线拉开层级(#9/#10) */
+.entry.primary a{border:1px solid var(--gold);background:rgba(241,217,143,.1);color:var(--txt);font-weight:600;}
+.entry.primary a:hover{background:rgba(241,217,143,.18);}
+
+/* 缩略图画廊：统一尺寸 + 自然比例（绝不拉伸） + 居中（末行也居中、无大块留白）。
+   海报/选手卡各自同比例，塞进等宽 tile 自然等高，天然成整齐网格。 */
+.gallery{display:flex;flex-wrap:wrap;gap:14px;justify-content:center;}
+.gallery .tile{flex:0 1 220px;}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;}
+.tile a{display:block;}
+.tile img{width:100%;height:auto;cursor:zoom-in;background:#0b1320;}
+.tile .cap,.shot .cap{padding:9px 12px;font-size:13px;color:var(--mut);text-align:center;}
+
+footer{color:var(--mut);font-size:12px;text-align:center;padding:30px 20px 40px;}
+
+/* 全屏画册 */
+#lb{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.94);display:none;
+    align-items:center;justify-content:center;overflow:hidden;touch-action:none;}
+#lb.on{display:flex;}
+#lb img{max-width:96vw;max-height:84vh;object-fit:contain;transform-origin:center center;will-change:transform;}
+#lb .x{position:absolute;top:10px;right:14px;font-size:36px;color:#fff;cursor:pointer;line-height:1;z-index:2;
+       background:none;border:0;padding:4px 10px;min-width:44px;min-height:44px;}
+#lb .bar{position:absolute;bottom:18px;left:0;right:0;display:flex;align-items:center;justify-content:center;
+         gap:26px;z-index:2;}
+#lb .bar button{width:54px;height:54px;border-radius:50%;border:1px solid rgba(255,255,255,.35);
+         background:rgba(20,28,42,.7);color:#fff;font-size:26px;cursor:pointer;line-height:1;}
+#lb .bar button:active{background:rgba(60,72,96,.8);}
+#lb .ct{color:#cfe0ee;font-size:14px;min-width:54px;text-align:center;}
+
+/* 整页炫酷版：全分辨率原图、自然比例，不放大缩略、不拉伸。
+   PC 不固定宽度，跟移动端一样按视口自适应铺满（只留内边距）;max-width 取 4200px（≈最窄榜单源宽 位置榜4320）
+   纯作上限保险——任何真实显示器(≤3440)都到不了，故等于完全随宽自适应，仅防超宽屏(>4200)把整图放大发糊。 */
+.allpage{max-width:4200px;margin:0 auto;padding:6px clamp(16px,2.6vw,64px) 44px;}
+h2.sec{font-size:19px;margin:32px 0 14px;padding-left:12px;border-left:4px solid var(--gold);}
+.shot{margin:0 0 18px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel);}
+.shot img{width:100%;height:auto;cursor:zoom-in;}
+/* 整页版战力榜：位置榜是竖长条 → 单独占左列，个人/高阶/击杀三张竖堆右列（各自然比例、不裁不留空底）。窄屏退单列。 */
+.matchblk{margin:0 0 6px;}
+.matchblk .d{color:var(--gold);font-weight:600;margin:18px 2px 12px;font-size:16px;}
+.pair{display:flex;flex-wrap:wrap;gap:16px;}
+.pair .shot{flex:1 1 460px;margin:0 0 16px;}
+.cardgrid{display:flex;flex-wrap:wrap;gap:14px;justify-content:center;}
+.cardgrid .tile{flex:0 1 200px;}
+.more{display:block;margin:10px auto 0;padding:10px 24px;background:var(--panel);border:1px solid var(--line);
+      color:var(--txt);border-radius:10px;font-size:14px;cursor:pointer;}
+
+@media(max-width:900px){   /* 窄屏：战力榜退单列；很长的位置榜放最后，免一上来就挡住其它 */
+}
+@media(max-width:640px){
+  .gallery .tile{flex-basis:44vw;}
+  .pair .shot{flex-basis:100%;}
+  .cardgrid .tile{flex-basis:44vw;}
+}
+
+/* ---- 数据站：原生 HTML 表格（只吃 raw 值，格式化全在前端），客户端排序/筛选 ---- */
+.dwrap{max-width:1280px;margin:0 auto;padding:14px 16px 44px;}
+.dctrl{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:6px 0 14px;}
+.dtabs{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;}
+.dtabs button{padding:9px 18px;background:var(--panel);border:0;color:var(--mut);font-size:14px;cursor:pointer;}
+.dtabs button.on{background:#16263c;color:var(--txt);font-weight:600;}
+.dchips{display:flex;gap:6px;flex-wrap:wrap;}
+.dchips button{padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:transparent;
+       color:var(--mut);font-size:13px;cursor:pointer;}
+.dchips button.on{color:var(--gold);border-color:var(--gold);background:rgba(241,217,143,.12);font-weight:600;}
+.dctrl select,.dctrl input{background:var(--panel);border:1px solid var(--line);color:var(--txt);
+       border-radius:8px;padding:7px 10px;font-size:13px;}
+.dctrl input{width:130px;}
+.tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--panel);}
+table.dt{border-collapse:collapse;width:100%;min-width:780px;font-size:13.5px;}
+/* 预测成绩单=4列短表:用 grid + justify-content:space-between → 列按内容定宽、整行铺满容器、列间隙天然均等
+   (table width:100% 只会把多余空间塞进某一列、造成不均);subgrid 让每行继承同一组列轨道→列对齐 + 整行底线/悬停连续。 */
+/* 预测成绩单:扁平 grid(不用 subgrid——subgrid+space-between 窄屏不正确等分)。4 列 auto 按内容定宽,
+   justify-content:space-between 把多余宽度【等分】成列间隙(实测各列间隙一致);align-items:center 让短值与多行(版本chip换行)的格垂直居中。
+   比分/命中右对齐;值放大到≈表头宽,消除右对齐在窄表头下留的左空。窄屏列间距缩小,内容仍单屏。 */
+.scgrid{display:grid;grid-template-columns:auto auto auto auto;justify-content:space-between;align-items:center;column-gap:30px;width:100%;font-size:13.5px;}
+.scgrid>div{padding:9px 0;white-space:nowrap;}
+.scgrid>div.scr{text-align:right;font-size:1.12em;font-weight:600;}      /* 比分/命中:右对齐 + 略放大(填满列、给结果以视觉重量) */
+.scgrid>div.sch{color:var(--mut);font-weight:600;font-size:13.5px;}      /* 表头:正常字号(放大只针对数据值,不连表头一起放大) */
+@media(max-width:640px){ .scgrid{font-size:12px;column-gap:16px;}
+  .scgrid>div.sch{font-size:12px;}
+  .scgrid .vbadge,.scgrid .mbadge{display:block;margin:3px 0 0;width:max-content;} }
+/* 窄屏:版本/预测代号 chip 换行展示→列变窄,整表单屏铺下不横滑(content fit,space-between 照样匀) */
+@media(max-width:640px){ .scgrid{font-size:12px;column-gap:10px;}
+  .scgrid .scrow .vbadge,.scgrid .scrow .mbadge{display:block;margin:3px 0 0;width:max-content;} }   /* 窄屏:不 space-between(没富余空间会挤成无缝),列按内容宽+24px固定间距,tblwrap 横向滚动 */
+.dt thead th{position:sticky;top:0;z-index:2;background:rgba(16,27,45,.82);color:var(--mut);font-weight:600;
+       text-align:right;padding:10px;white-space:nowrap;cursor:default;user-select:none;border-bottom:1px solid var(--line);}
+.dt thead th.l{text-align:left;}
+.dt thead th.on{color:var(--gold);}                         /* 当前排序列:金色(持久,选手/版本两页统一) */
+.dt thead th.srt{cursor:pointer;}                           /* 只有可排序列才有手型 */
+.dt thead th.srt:hover{color:var(--gold);}
+.dt thead th.on .sarr,.dt thead th.srt:hover .sarr{color:var(--gold);}
+.dt td{padding:8px 10px;text-align:right;border-bottom:1px solid rgba(31,47,68,.55);white-space:nowrap;}
+.dt td.l{text-align:left;}
+.dt tbody tr:hover{background:rgba(22,38,60,.5);}
+/* 选手名链接：点状下划线作静态示能，悬停金色+实线即时反馈，按压微暗（可交互性三态齐全）。
+   用 longhand 而非 text-decoration 简写：老版 Safari 对多值简写解析不一，longhand 全兼容 */
+a.nm{font-weight:600;cursor:pointer;text-decoration-line:underline;text-decoration-style:dotted;
+     text-decoration-color:rgba(127,160,186,.6);text-underline-offset:3px;
+     transition:color .15s,text-decoration-color .15s;}
+a.nm:hover{color:var(--gold);text-decoration-style:solid;text-decoration-color:var(--gold);}
+a.nm:active{opacity:.72;}
+.dt .dim{color:var(--mut);}
+.pos{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600;}
+.win{color:#34d399;font-weight:600;}.lose{color:#f87171;}
+.gold{color:#f59e0b;font-weight:700;}
+.up{color:#34d399;}.dn{color:#f87171;}
+.tier{display:inline-block;padding:1px 7px;border-radius:6px;font-size:11.5px;margin-left:6px;border:1px solid;opacity:.9;}
+.dnote{color:var(--mut);font-size:12px;margin:10px 2px;}
+.dt a:hover{color:var(--gold);}
+/* 表格收起/展开：长榜单只露头尾，中段折叠 */
+.foldbtn{display:block;width:100%;padding:8px;background:rgba(22,38,60,.5);border:0;border-bottom:1px solid rgba(31,47,68,.55);
+        color:var(--mut);font-size:12.5px;cursor:pointer;}
+.foldbtn:hover{color:var(--gold);}
+tbody.fold{display:none;}
+tbody.fold.open{display:table-row-group;}
+tbody.fold.fopen{display:table-row-group;}   /* 按选手筛选时强制展开折叠段(匹配行别被折叠藏住),与手动 .open 互不干扰 */
+@media(max-width:640px){ table.dt{font-size:12.5px;} .dctrl input{width:100px;} }
+
+/* ---- 数据站子导航（总览/趋势/对位/阵容） ---- */
+/* 顶部页面导航：下划线 tab 风格，刻意区别于筛选 chip（胶囊）——导航≠筛选 */
+.subnav{display:flex;gap:2px;flex-wrap:wrap;max-width:1280px;margin:12px auto 0;padding:0 16px;}
+.subnav a{padding:8px 15px;color:var(--mut);font-size:14.5px;border-bottom:2px solid transparent;}
+.subnav a.on{color:var(--gold);border-bottom-color:var(--gold);font-weight:600;}
+.subnav a:hover{color:var(--txt);}
+
+/* 趋势对比：选手chips（边框=折线色），全选/反选 */
+.pchips{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;}
+.chiplabel{color:var(--mut);font-size:12px;align-self:center;margin-right:2px;}   /* 筛选chip组前导标签:让「按位置筛」「按选手筛」一眼可分(#5) */
+.pchips button{padding:6px 13px;border-radius:999px;border:1.6px solid rgba(127,160,186,.32);background:rgba(127,160,186,.05);
+       color:var(--mut);font-size:13px;cursor:pointer;}
+/* 选中态要一眼可辨：金字金边+淡金底（趋势页会用内联的选手专色覆盖边框/文字，底色通用） */
+.pchips button.on{color:var(--gold);border-color:var(--gold);background:rgba(241,217,143,.12);font-weight:600;}
+.selops{display:flex;gap:8px;}
+.selops button{padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel);
+       color:var(--mut);font-size:12.5px;cursor:pointer;}
+.selops button:hover{color:var(--txt);}
+.pchips button:hover{border-color:var(--mut);color:var(--txt);}
+/* 智能组队：选手chips双组（A蓝/B红）+模式按钮+胜率对比条+看点标签+补充英雄入口 */
+.pchips button.t1{color:#9CC3FF;border-color:#4A7DC4;background:rgba(74,125,196,.18);font-weight:600;}
+.pchips button.t2{color:#FFA3A3;border-color:#B04848;background:rgba(176,72,72,.18);font-weight:600;}
+#smMA.on{color:#9CC3FF;border-color:#4A7DC4;background:rgba(74,125,196,.18);font-weight:600;}
+#smMB.on{color:#FFA3A3;border-color:#B04848;background:rgba(176,72,72,.18);font-weight:600;}
+.mvb{background:transparent;border:1px solid var(--line);color:var(--mut);border-radius:6px;
+       cursor:pointer;font-size:11px;padding:1px 6px;line-height:1.4;}
+.mvb:hover{color:var(--txt);border-color:var(--mut);}
+.vsbar{display:flex;height:13px;border-radius:7px;overflow:hidden;border:1px solid var(--line);margin:8px 0 2px;}
+.vsbar i{display:block;height:100%;}
+/* 逐场比赛：比赛卡（头部比分+A/B阵容，点开看每对局对位） */
+.mxlist{display:flex;flex-direction:column;gap:12px;}
+.mcard{border:1px solid var(--line);border-radius:12px;background:var(--panel);overflow:hidden;}
+.mhd{display:flex;align-items:center;gap:14px;padding:12px 16px;cursor:pointer;}
+.mhd:hover{background:rgba(22,38,60,.4);}
+.mhd .mdt{font-size:17px;font-weight:700;color:var(--txt);}
+.mhd .msc{font-size:15px;color:var(--mut);}
+.mhd .msc b{color:var(--txt);font-size:17px;margin:0 2px;}
+.rbadge{font-size:11.5px;padding:2px 9px;border-radius:999px;color:#5EEAD4;border:1px solid rgba(94,234,212,.4);background:rgba(94,234,212,.08);}
+.vbadge{font-size:11.5px;padding:2px 9px;border-radius:999px;color:#9DB2C9;border:1px solid rgba(157,178,201,.35);background:rgba(157,178,201,.08);}   /* 版本chip(比赛日所跑版本,全球统一格式 S16.x,中性钢蓝) */
+.mbadge{font-size:10.5px;padding:1px 7px;border-radius:999px;color:#B6A6D6;border:1px solid rgba(182,166,214,.4);background:rgba(182,166,214,.08);margin-left:3px;white-space:nowrap;}   /* 预测代号chip(P1/P2,与版本chip区分用淡紫) */
+.mhd .mtoggle{margin-left:auto;font-size:12.5px;color:var(--mut);white-space:nowrap;}
+.mteam{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px;padding:7px 16px;font-size:13.5px;border-top:1px solid rgba(31,47,68,.4);}
+.mteam.win{background:rgba(241,217,143,.05);}
+.mteam .ms{font-weight:600;min-width:88px;}
+.mteam.win .ms{color:var(--gold);}
+.mteam .mwin{font-size:11px;color:#0a0f1a;background:var(--gold);border-radius:4px;padding:0 5px;}
+.mteam .mavg{font-size:12px;color:var(--mut);min-width:92px;}
+.mteam .mr{color:var(--txt);}
+.mdetail{padding:6px 16px 16px;border-top:1px solid var(--line);}
+.gsec{margin:16px 0 8px;font-size:14px;font-weight:600;padding-left:9px;border-left:3px solid var(--gold);}
+/* 本局禁用英雄（征召局才有）：标签 + 英雄名小药丸 */
+.gbans{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:7px 18px;margin:-2px 0 10px;padding-left:9px;}
+.gbgrp{display:flex;flex-wrap:wrap;align-items:center;gap:5px;flex:0 0 auto;max-width:100%;}   /* 每队禁用=一个整组:放得下→并排分列两边;放不下→整组换行(非文字换行);单组本身过宽才内部折chip */
+.gbans .gbl{font-size:11px;color:var(--mut);margin-right:2px;}
+.gbans .gbc{font-size:11px;color:#C9D6E6;background:rgba(120,140,170,.12);border:1px solid rgba(120,140,170,.22);border-radius:4px;padding:1px 6px;}
+/* 单局五路对位块：A左/位置中/B右 + 三条红蓝对比数据条 */
+.dpos{padding:9px 0;border-top:1px solid rgba(31,47,68,.4);}
+.dpos:first-child{border-top:0;}
+.dphd{display:grid;grid-template-columns:1fr 52px 1fr;align-items:center;gap:8px;font-size:13.5px;}
+.dphd .dpA{text-align:left;}
+.dphd .dpB{text-align:right;}
+.dphd .dpc{text-align:center;font-weight:700;color:var(--mut);font-size:12.5px;}
+.dphd .dpp .dpn{line-height:1.35;}                          /* 第1行：名字+英雄(+MVP) */
+.dphd .dpp .dpk{font-size:11px;line-height:1.3;color:var(--mut);font-variant-numeric:tabular-nums;}  /* 第2行：评分·KDA */
+.dpbars{margin:7px 0 2px;display:flex;flex-direction:column;gap:4px;}
+.cbar{display:flex;align-items:center;gap:8px;font-size:11.5px;}
+.cbar .cbl{flex:0 0 30px;color:var(--mut);}
+.cbar .cva{flex:0 0 72px;text-align:right;font-variant-numeric:tabular-nums;}
+.cbar .cvb{flex:0 0 72px;text-align:left;font-variant-numeric:tabular-nums;}
+.cbar .cpct{opacity:.65;font-size:10.5px;}
+.cbar .ctrack{flex:1;display:flex;height:8px;border-radius:5px;overflow:hidden;background:rgba(31,47,68,.5);}
+.cbar .ctrack i{display:block;height:100%;}
+@media(max-width:640px){ .mteam .ms,.mteam .mavg{min-width:0;} }
+.bgrid{display:grid;grid-template-columns:1fr 1fr;gap:0 18px;}
+.bgrid .bcap{font-size:12.5px;margin:10px 0 2px;}
+.bli{font-size:13.5px;line-height:1.8;padding-left:16px;position:relative;}
+.bli::before{content:"\2022";position:absolute;left:2px;color:#5d7d96;}  /* CSS在Python普通字符串里，\2022才能给到浏览器2 */
+.bli.dim::before{content:"";}
+@media(max-width:760px){ .bgrid{display:block;} }
+.tagrow{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0;}
+.stag{font-size:12.5px;padding:6px 11px;border-radius:9px;border:1px solid var(--line);background:var(--panel);line-height:1.5;}
+ul.slist{margin:6px 0 0;padding-left:18px;font-size:13.5px;line-height:1.8;}
+/* 对位表胜率内嵌条（吸收自mimo，但加了它没有的小样本警示：n<3灰显） */
+.wrbar{display:inline-block;vertical-align:middle;width:62px;height:6px;border-radius:4px;
+       background:var(--line);margin-right:8px;overflow:hidden;}
+.wrbar i{display:block;height:100%;background:linear-gradient(90deg,#4ade80,#22c55e);}
+.wrbar.low i{background:#5d7d96;}
+
+/* ---- 选手个人页 ---- */
+.pwrap{max-width:1100px;margin:0 auto;padding:16px 16px 44px;}
+.phero{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin:6px 0 4px;}
+.phero h2{margin:0;font-size:26px;}
+.phero .nick{color:var(--mut);font-size:14px;}
+.phero .cardlink{margin-left:auto;}
+.phero .cardlink img{width:52px;height:auto;border-radius:8px;border:1px solid var(--line);cursor:zoom-in;}
+.statchips{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0 4px;}
+.sc{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 16px;min-width:96px;}
+.sc b{display:block;font-size:20px;}
+.sc.gold b{color:var(--gold);}
+.sc span{color:var(--mut);font-size:12px;}
+.quote{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--gold);
+       border-radius:10px;padding:12px 16px;margin:14px 0;color:#c9dcec;font-size:14px;line-height:1.75;}
+.quote p{margin:6px 0;}
+.psec{margin:24px 0 10px;font-size:16px;font-weight:600;padding-left:10px;border-left:3px solid var(--gold);}
+.psec small{color:var(--mut);font-weight:400;margin-left:8px;}
+.trend{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px 4px;}
+.trend svg{width:100%;height:auto;display:block;}
+.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.pgrid>div{min-width:0;}   /* 缺这条时 nowrap 单元格会把网格列撑破视口，tblwrap 的局部横滚失效→整页横向溢出 */
+.dwrap.wide{max-width:1920px;}   /* 进阶榜单：宽屏让五张位置卡挤一排 */
+/* 5张位置卡：flex居中换行，宽屏5列一排，窄屏退3+2（第二行居中）/2列/单列 */
+.pgrid2{display:flex;flex-wrap:wrap;justify-content:center;gap:16px;}
+.pgrid2>div{flex:0 1 calc((100% - 64px)/5);min-width:0;}
+@media(max-width:1620px){ .pgrid2>div{flex-basis:calc((100% - 32px)/3);min-width:330px;} }
+@media(max-width:1080px){ .pgrid2>div{flex-basis:calc((100% - 16px)/2);} }
+@media(max-width:740px){ .pgrid2>div{flex-basis:100%;min-width:0;} }
+/* 击杀/助攻 4 张榜：PC 收窄成一排 4 列，平板 2 列，手机单列 */
+.pgrid4{display:flex;flex-wrap:wrap;gap:16px;}
+.pgrid4>div{flex:0 1 calc((100% - 48px)/4);min-width:0;}
+@media(max-width:1280px){ .pgrid4>div{flex-basis:calc((100% - 16px)/2);} }
+@media(max-width:760px){ .pgrid4>div{flex-basis:100%;} }
+/* 预测页顶部两张大数字卡：PC 并排，手机堆叠 */
+.pscards{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:8px 0 4px;}
+@media(max-width:560px){ .pscards{grid-template-columns:1fr;} }
+/* 版本英雄库：大标题（父级）+ 筛选chip/搜索框/可滚动列表（sticky表头） */
+.bighdr{margin:42px 0 4px;font-size:22px;font-weight:800;letter-spacing:1px;padding-bottom:12px;border-bottom:1px solid var(--line);}
+.bighdr small{display:block;font-size:13px;color:var(--mut);font-weight:400;letter-spacing:0;margin-top:7px;}
+.vintro{color:var(--mut);font-size:13px;margin:2px 0 4px;}
+.vintro b{color:var(--txt);}
+.vbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0;}
+.vbar .pchips{margin:0;}
+.vsearch{background:var(--panel);border:1px solid var(--line);border-radius:8px;color:var(--txt);padding:7px 12px;font-size:13px;width:150px;}
+.vsearch::placeholder{color:var(--mut);}
+.vsearch:focus{outline:none;border-color:var(--gold);}
+/* 单表 + table-layout:auto：列按内容自适应宽(内容多的宽、少的窄)，width:100% 铺满(大屏铺开/小屏收)，
+   统一列内边距 = 统一列间距；表头表身同表→自动对齐；竖滚原生条隐藏，自绘悬浮条(.vsb)偏移到表头下方浮在内容上。 */
+.vbodywrap{position:relative;border:1px solid var(--line);border-radius:12px;background:rgba(10,17,28,.4);overflow:hidden;}
+.vscroll{max-height:460px;overflow:auto;overscroll-behavior:contain;scrollbar-width:none;}   /* 双向滚动;隐藏原生条(Firefox) */
+.vscroll::-webkit-scrollbar{display:none;}                                                    /* 隐藏原生条(WebKit) */
+.vsb{position:absolute;top:0;bottom:4px;right:3px;width:8px;opacity:.4;transition:opacity .25s;pointer-events:none;z-index:3;}
+.vbodywrap:hover .vsb,.vsb.on{opacity:1;}
+.vsbth{position:absolute;left:0;width:8px;border-radius:4px;background:rgba(175,190,215,.65);pointer-events:auto;cursor:grab;}
+.vsbth:hover{background:rgba(195,210,235,.8);}
+.vsbth:active{cursor:grabbing;background:rgba(205,220,245,.9);}
+.vscroll table.dt{table-layout:auto;width:100%;}   /* 列按内容自适应宽,整表铺满容器 */
+.vscroll td{overflow:hidden;text-overflow:ellipsis;}
+#vMeta td,#vMeta thead th{padding-left:7px;padding-right:7px;}   /* 统一列内边距=统一列间距 */
+#vMeta thead th{background:#0f1a2c;}   /* sticky 表头不透明,滚动时下方行不透出 */
+#vMeta .vscroll td:last-child{padding-right:16px;}   /* 最右列右让,避开悬浮滚动条 */
+.cstk{white-space:nowrap;line-height:1.6;}   /* 克制/组合：每条对位竖排换行 */
+#vMeta td{vertical-align:top;padding-top:9px;}   /* 合并总表多行单元格顶对齐，数值列与各对位栈顶部对齐 */
+#vMeta td:first-child{white-space:normal;line-height:1.25;}   /* 英雄名允许换行(行高本就够),别再 nowrap 截断成「弗雷尔卓德…」 */
+@media(min-width:1100px){#vMeta .vscroll{max-height:72vh;}}   /* PC 加高，一屏看更多行 */
+.vscroll.wrap td{white-space:normal;}
+.sarr{color:#8aa0b8;font-size:10px;margin-left:4px;}   /* 可排序提示箭头:平时暗 ⇅,当前列金色 ▲/▼(规则见上 .dt thead th.srt/.on) */
+.vempty{padding:18px;text-align:center;color:var(--mut);font-size:13px;}
+/* 可点击英雄名 + 单英雄弹窗 */
+.cl{cursor:pointer;color:var(--txt);border-bottom:1px dotted rgba(127,160,186,.55);}
+.cl:hover{color:var(--gold);border-bottom-color:var(--gold);}
+.cmodal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:1000;align-items:center;justify-content:center;padding:20px;}
+.cmodal.on{display:flex;}
+.cmbox{background:#0e1828;border:1px solid var(--line);border-radius:14px;max-width:520px;width:100%;max-height:84vh;overflow:auto;padding:22px 24px;position:relative;}
+.cmx{position:absolute;top:8px;right:8px;background:transparent;color:var(--mut);font-size:18px;padding:6px 10px;cursor:pointer;}
+.cmbox h3{margin:0 0 4px;font-size:22px;}
+.cmtag{color:var(--mut);font-size:13px;margin-bottom:8px;}
+.cmh{margin:16px 0 6px;font-weight:600;color:var(--gold);font-size:14px;}
+.cmt{width:100%;border-collapse:collapse;font-size:13px;}
+.cmt th{color:var(--mut);font-weight:400;text-align:right;padding:4px 6px;}
+.cmt th:first-child,.cmt td:first-child{text-align:left;}
+.cmt td{text-align:right;padding:4px 6px;border-top:1px solid rgba(31,47,68,.5);}
+.cmr{margin:6px 0;font-size:13.5px;line-height:1.55;}
+.cmr b{margin-right:6px;}
+.cmpos{margin:10px 0 2px;font-size:12px;color:var(--mut);font-weight:600;border-left:2px solid var(--gold);padding-left:6px;}
+/* 横滚条美化：系统默认的白色滚动条在深色卡上太刺眼 */
+.tblwrap{scrollbar-width:thin;scrollbar-color:#22344e transparent;}
+.tblwrap::-webkit-scrollbar{height:7px;}
+.tblwrap::-webkit-scrollbar-thumb{background:#22344e;border-radius:4px;}
+.tblwrap::-webkit-scrollbar-track{background:transparent;}
+/* 进阶榜单卡片化：面板卡 + 前三名金银铜徽章 + 数值条 */
+.rankcard{background:linear-gradient(180deg,rgba(20,34,54,.72),rgba(13,22,36,.8));border:1px solid var(--line);
+  border-radius:14px;padding:12px 14px 4px;min-width:0;}
+.rankcard .rh{display:flex;align-items:center;justify-content:space-between;margin:2px 2px 10px;}
+.rankcard .rh b{font-size:15px;}
+.rankcard .rh .avg{font-size:12.5px;color:var(--mut);}
+.rankcard .tblwrap{border:0;background:transparent;border-radius:0;}
+.rankcard table.dt{min-width:0;font-size:13px;}
+.rankcard .dt thead th{background:transparent;padding:8px 7px;}
+.rankcard .dt td{padding:7px;}
+.rk{display:inline-block;min-width:22px;height:22px;line-height:22px;border-radius:7px;text-align:center;
+  font-size:12px;font-weight:700;background:#22344e;color:var(--mut);}
+.rk.r1{background:linear-gradient(135deg,#f6e2a0,#c9a44a);color:#241b06;}
+.rk.r2{background:linear-gradient(135deg,#dde8f2,#9fb4c8);color:#16202c;}
+.rk.r3{background:linear-gradient(135deg,#e7b98c,#b07a4a);color:#241406;}
+.sbar{display:inline-block;vertical-align:middle;width:44px;height:5px;border-radius:3px;
+  background:rgba(31,47,68,.85);margin-left:7px;overflow:hidden;}
+.sbar i{display:block;height:100%;border-radius:3px;}
+table.dt.mini{min-width:0;font-size:13px;}
+.trend{overflow-x:auto;}
+.trend svg{min-width:760px;}   /* 窄屏别把 960 宽的图等比缩到轴标不可读：保住可读宽度，容器内横滚 */
+/* 版本9列宽表(移动端):真机原生横滚条是 overlay 看不见 → 文字提示 + 右缘渐隐作横滑 signifier(#7) */
+.vscrollhint{display:none;text-align:center;color:var(--mut);font-size:11.5px;margin:7px 2px 0;}
+@media(max-width:760px){ .pgrid{grid-template-columns:1fr;} }
+@media(max-width:640px){
+  .vscrollhint{display:block;}
+  .vbodywrap::after{content:"";position:absolute;top:0;right:0;bottom:4px;width:30px;pointer-events:none;z-index:2;
+    background:linear-gradient(to right,rgba(14,23,38,0),rgba(8,13,24,.92));}
+  /* 触控热区:主导航/筛选chip/切换键/弹窗关闭 ~44px 高 + 间距(Fitts #10) */
+  .subnav{gap:8px;}
+  .subnav a{padding:12px 15px;}
+  .pchips button{padding:9px 14px;}
+  .dtabs button{padding:11px 18px;}
+  .cmx{min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;}
+}
