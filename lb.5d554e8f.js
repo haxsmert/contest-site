@@ -18,7 +18,7 @@
     if(ct) ct.textContent=(i+1)+' / '+g.length; }
   var sc=document.querySelector('main.scroll');   // 页面滚动收敛在 main.scroll，锁它而不是 body
   function open(a){ g=[].slice.call(document.querySelectorAll('a.lb')); i=g.indexOf(a);
-    show(); lb.classList.add('on'); if(sc) sc.style.overflow='hidden'; }
+    show(); lb.classList.toggle('one', g.length<2); lb.classList.add('on'); if(sc) sc.style.overflow='hidden'; }
   function close(){ lb.classList.remove('on'); im.removeAttribute('src'); reset(); if(sc) sc.style.overflow=''; }
   function nav(d){ if(g.length){ i=(i+d+g.length)%g.length; show(); } }
   document.addEventListener('click', function(e){

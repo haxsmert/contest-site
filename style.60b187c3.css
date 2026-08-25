@@ -66,6 +66,29 @@ header.bar .crumbs .cur{color:var(--txt);font-size:17px;font-weight:600;white-sp
 .folder .fm{display:flex;justify-content:space-between;align-items:baseline;padding:11px 14px;}
 .folder .ft{font-size:16px;font-weight:600;}
 .folder .fc{color:var(--mut);font-size:12px;}
+/* 首页头条：网页版个人战力榜。图片版是发出去用的成品，网页版才是一进首页
+   零点击就该看到的东西（谁第几）。两列是刻意的——16 行单列会把相册整块挤到
+   折叠线以下；窄屏自动并回一列。 */
+.hbd{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:0 0 12px;margin:0 0 18px;}
+.hbh{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding:14px 16px 10px;}
+.hbh h2{font-size:17px;font-weight:700;}
+.hbh .hbn{color:var(--mut);font-size:12px;flex:1 1 auto;}
+/* margin-left:auto:窄屏这颗按钮会换行独占一行,靠自动外边距把它顶到右缘,不然孤零零杵在左边 */
+.hbh .hbz{flex:0 0 auto;margin-left:auto;font-size:13px;color:var(--mut);border:1px solid var(--line);
+     border-radius:999px;padding:5px 12px;cursor:zoom-in;white-space:nowrap;}
+.hbh .hbz:hover{border-color:var(--gold);color:var(--txt);}
+.hbg{columns:1;column-gap:26px;padding:0 10px;}
+@media(min-width:880px){ .hbg{columns:2;} }
+.hbr{break-inside:avoid;display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:8px;}
+.hbr:hover{background:rgba(255,255,255,.045);}
+.hbr .rk{flex:0 0 22px;}
+.hbr .nm{flex:0 0 5em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.hbr .tg{flex:0 0 4em;font-size:12px;}
+.hbr .hbv{flex:0 0 3.1em;text-align:right;font-size:15px;font-variant-numeric:tabular-nums;}
+.hbr .sbar{flex:1 1 auto;width:auto;min-width:40px;height:6px;}
+/* 首页相册区（现在只剩海报/选手卡两本）：不撑满整行，免得封面被拉成巨图 */
+.albums.home{max-width:760px;margin-left:auto;margin-right:auto;}
+
 .entry{max-width:1180px;margin:20px auto 0;}
 .entry a{display:flex;align-items:center;justify-content:center;gap:8px;padding:14px;border-radius:12px;
         border:1px dashed var(--line);color:var(--mut);font-size:14px;}
@@ -98,6 +121,7 @@ footer{color:var(--mut);font-size:12px;text-align:center;padding:30px 20px 40px;
          background:rgba(20,28,42,.7);color:#fff;font-size:26px;cursor:pointer;line-height:1;}
 #lb .bar button:active{background:rgba(60,72,96,.8);}
 #lb .ct{color:#cfe0ee;font-size:14px;min-width:54px;text-align:center;}
+#lb.one .bar{display:none;}   /* 只有一张图时不摆「1 / 1」和两个空转的箭头 */
 
 /* 整页炫酷版：全分辨率原图、自然比例，不放大缩略、不拉伸。
    PC 不固定宽度，跟移动端一样按视口自适应铺满（只留内边距）;max-width 取 4200px（≈最窄榜单源宽 位置榜4320）
