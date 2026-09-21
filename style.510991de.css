@@ -71,7 +71,7 @@ header.bar .crumbs .cur{color:var(--txt);font-size:17px;font-weight:600;white-sp
 .folder.aw .cv{aspect-ratio:4/3;}
 .folder.aw .fm{padding-bottom:4px;}
 .folder .fs{padding:0 14px 13px;color:var(--mut);font-size:12.5px;line-height:1.55;}
-.folder .fs .lbh{color:var(--gold);white-space:nowrap;}
+.folder .fs .lbh{display:block;margin-top:5px;color:var(--gold);white-space:nowrap;}
 .entry{max-width:1180px;margin:20px auto 0;}
 .entry a{display:flex;align-items:center;justify-content:center;gap:8px;padding:14px;border-radius:12px;
         border:1px dashed var(--line);color:var(--mut);font-size:14px;}
